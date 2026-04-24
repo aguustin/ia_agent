@@ -1,0 +1,30 @@
+import { Repository } from 'typeorm';
+import { Observable } from 'rxjs';
+import { ChatSession } from './entities/chat-session.entity';
+import { ChatMessage } from './entities/chat-message.entity';
+import { CreateSessionDto } from './dto/create-session.dto';
+import { SendMessageDto } from './dto/send-message.dto';
+import { DirectMessageDto, DirectChatResponse } from './dto/direct-message.dto';
+import { ChatContextService } from './services/chat-context.service';
+import { PaginationDto, PaginatedResult } from '@common/dto/pagination.dto';
+import { AuthenticatedUser } from '@common/interfaces/authenticated-user.interface';
+import { IAIProvider } from '@providers/ai/ai-provider.interface';
+import { ProjectsService } from '@modules/projects/projects.service';
+export declare class ChatService {
+    private readonly sessionRepo;
+    private readonly messageRepo;
+    private readonly ai;
+    private readonly projectsService;
+    private readonly chatContextService;
+    private readonly logger;
+    constructor(sessionRepo: Repository<ChatSession>, messageRepo: Repository<ChatMessage>, ai: IAIProvider, projectsService: ProjectsService, chatContextService: ChatContextService);
+    createSession(projectId: string, dto: CreateSessionDto, actor: AuthenticatedUser): Promise<ChatSession>;
+    findSessions(projectId: string, actor: AuthenticatedUser, pagination: PaginationDto): Promise<PaginatedResult<ChatSession>>;
+    findSessionById(sessionId: string, tenantId: string): Promise<ChatSession>;
+    sendMessage(sessionId: string, projectId: string, dto: SendMessageDto, actor: AuthenticatedUser): Promise<ChatMessage>;
+    streamMessage(sessionId: string, projectId: string, dto: SendMessageDto, actor: AuthenticatedUser): Observable<MessageEvent>;
+    sendDirectMessage(projectId: string, dto: DirectMessageDto, actor: AuthenticatedUser): Promise<DirectChatResponse>;
+    private resolveSession;
+    private findOrCreateSession;
+    private getHistory;
+}

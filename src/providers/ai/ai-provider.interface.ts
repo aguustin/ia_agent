@@ -1,0 +1,94 @@
+export enum IssueType {
+  COMPLIANCE = 'compliance',
+  COMPLETENESS = 'completeness',
+  TECHNICAL = 'technical',
+  SAFETY = 'safety',
+  ENVIRONMENTAL = 'environmental',
+}
+
+export enum IssueSeverity {
+  CRITICAL = 'critical',
+  HIGH = 'high',
+  MEDIUM = 'medium',
+  LOW = 'low',
+  INFO = 'info',
+}
+
+export interface AnalysisIssueResult {
+  type: IssueType;
+  severity: IssueSeverity;
+  description: string;
+  location?: string;
+  recommendation?: string;
+  regulation?: string;
+}
+
+export interface DocumentAnalysisRequest {
+  documentContent: string;
+  documentName: string;
+  documentType: string;
+  projectName: string;
+  projectDescription?: string;
+}
+
+export interface DocumentAnalysisResult {
+  summary: string;
+  complianceScore: number;
+  issues: AnalysisIssueResult[];
+  recommendations: string[];
+  metadata: {
+    pagesAnalyzed: number;
+    analysisVersion: string;
+    model: string;
+  };
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export interface ChatRequest {
+  messages: ChatMessage[];
+  systemContext: string;
+  maxTokens?: number;
+}
+
+// ---------------------------------------------------------------------------
+// Pre-validation types
+// ---------------------------------------------------------------------------
+
+export interface PreValidationRequest {
+  /** Extracted text content (may be truncated). */
+  documentContent: string;
+  documentName: string;
+  documentType: string;
+  /** 0 when the format does not report page count. */
+  pageCount: number;
+  /** True when the content was cut off to stay within token limits. */
+  contentTruncated: boolean;
+}
+
+/**
+ * Result of a pre-validation analysis.
+ * All three arrays are always present (may be empty).
+ */
+export interface PreValidationResult {
+  /** Required items that are absent or incomplete in the document. */
+  faltantes: string[];
+  /** Regulatory non-compliance issues or incorrect data. */
+  errores: string[];
+  /** Items that need attention but are not outright errors. */
+  advertencias: string[];
+}
+
+// ---------------------------------------------------------------------------
+
+export const AI_PROVIDER_TOKEN = 'AI_PROVIDER';
+
+export interface IAIProvider {
+  analyzeDocument(request: DocumentAnalysisRequest): Promise<DocumentAnalysisResult>;
+  preValidateDocument(request: PreValidationRequest): Promise<PreValidationResult>;
+  chat(request: ChatRequest): Promise<string>;
+  chatStream(request: ChatRequest): AsyncIterable<string>;
+}
