@@ -17,10 +17,10 @@ async function bootstrap(): Promise<void> {
 
   const config = app.get(ConfigService);
   const port = config.get<number>('app.port', 3000);
-  const prefix = config.get<string>('app.apiPrefix', 'api');
+  const prefix = config.get<string>('API_PREFIX', 'api');
   const nodeEnv = config.get<string>('app.nodeEnv', 'development');
 
-  app.setGlobalPrefix(prefix);
+  app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
   app.useGlobalPipes(
