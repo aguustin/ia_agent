@@ -8,8 +8,13 @@ import {
   HttpCode,
   HttpStatus,
   UseGuards,
+  Sse,
+  MessageEvent,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
+import { Observable, fromEvent, map, filter, timeout, catchError, EMPTY } from 'rxjs';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { AnalysisService } from './analysis.service';
 import { DocumentAnalysisSummaryDto } from './dto/document-analysis-summary.dto';
 import { PaginationDto } from '@common/dto/pagination.dto';
@@ -18,12 +23,26 @@ import { JwtAuthGuard } from '@common/guards/jwt-auth.guard';
 import { RolesGuard } from '@common/guards/roles.guard';
 import { AuthenticatedUser } from '@common/interfaces/authenticated-user.interface';
 
+export interface AnalysisEvent {
+  documentId: string;
+  type: 'analysis' | 'pre-validation';
+  status: 'completed' | 'failed';
+  recordId: string;
+  errorMessage?: string;
+}
+
+// SSE connections auto-close after 10 minutes of no completion event.
+const SSE_TIMEOUT_MS = 10 * 60 * 1_000;
+
 @ApiTags('analysis')
 @ApiBearerAuth('access-token')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('projects/:projectId')
 export class AnalysisController {
-  constructor(private readonly analysisService: AnalysisService) {}
+  constructor(
+    private readonly analysisService: AnalysisService,
+    private readonly eventEmitter: EventEmitter2,
+  ) {}
 
   // ---------------------------------------------------------------------------
   // Full compliance analysis
@@ -31,6 +50,7 @@ export class AnalysisController {
 
   @Post('documents/:documentId/analyses')
   @HttpCode(HttpStatus.ACCEPTED)
+  @Throttle({ analysis: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: 'Trigger full AI compliance analysis for a document' })
   triggerAnalysis(
     @Param('projectId', ParseUUIDPipe) projectId: string,
@@ -56,6 +76,40 @@ export class AnalysisController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<DocumentAnalysisSummaryDto> {
     return this.analysisService.getDocumentAnalysisSummary(documentId, projectId, user.tenantId);
+  }
+
+  @Sse('documents/:documentId/analysis/events')
+  @ApiOperation({
+    summary: 'SSE stream — fires once when the latest analysis job completes or fails',
+    description:
+      'Connect with Accept: text/event-stream. The server sends one event ' +
+      '(status: completed | failed) and then closes the stream. ' +
+      'Auto-closes after 10 minutes if no job finishes.',
+  })
+  analysisEvents(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+  ): Observable<MessageEvent> {
+    return (fromEvent(this.eventEmitter, 'analysis.done') as Observable<AnalysisEvent>).pipe(
+      filter((e) => e.documentId === documentId && e.type === 'analysis'),
+      map((e): MessageEvent => ({ data: e })),
+      timeout({ first: SSE_TIMEOUT_MS, with: () => EMPTY }),
+      catchError(() => EMPTY),
+    );
+  }
+
+  @Sse('documents/:documentId/pre-validation/events')
+  @ApiOperation({
+    summary: 'SSE stream — fires once when the latest pre-validation job completes or fails',
+  })
+  preValidationEvents(
+    @Param('documentId', ParseUUIDPipe) documentId: string,
+  ): Observable<MessageEvent> {
+    return (fromEvent(this.eventEmitter, 'analysis.done') as Observable<AnalysisEvent>).pipe(
+      filter((e) => e.documentId === documentId && e.type === 'pre-validation'),
+      map((e): MessageEvent => ({ data: e })),
+      timeout({ first: SSE_TIMEOUT_MS, with: () => EMPTY }),
+      catchError(() => EMPTY),
+    );
   }
 
   @Get('documents/:documentId/analyses')
@@ -103,17 +157,15 @@ export class AnalysisController {
 
   @Post('documents/:documentId/pre-validation')
   @HttpCode(HttpStatus.ACCEPTED)
+  @Throttle({ analysis: { limit: 10, ttl: 60_000 } })
   @ApiOperation({
     summary: 'Trigger pre-validation for a document',
     description:
-      'Enqueues a pre-validation job. Poll the returned record ID to check status and retrieve results (faltantes, errores, advertencias).',
+      'Enqueues a pre-validation job. Poll the returned record ID or connect to the SSE stream to get notified on completion.',
   })
-  @ApiResponse({ status: HttpStatus.ACCEPTED, description: 'Job enqueued — poll for results.' })
+  @ApiResponse({ status: HttpStatus.ACCEPTED, description: 'Job enqueued.' })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'A pre-validation is already queued.' })
-  @ApiResponse({
-    status: HttpStatus.UNPROCESSABLE_ENTITY,
-    description: 'Document not yet uploaded.',
-  })
+  @ApiResponse({ status: HttpStatus.UNPROCESSABLE_ENTITY, description: 'Document not yet uploaded.' })
   triggerPreValidation(
     @Param('projectId', ParseUUIDPipe) projectId: string,
     @Param('documentId', ParseUUIDPipe) documentId: string,

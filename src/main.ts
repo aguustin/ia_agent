@@ -1,3 +1,6 @@
+import * as dotenv from 'dotenv';
+dotenv.config({ override: true });
+
 import { NestFactory, Reflector } from '@nestjs/core';
 import {
   ClassSerializerInterceptor,

@@ -3,6 +3,7 @@ import { Logger, Inject } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Job } from 'bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { QUEUES } from '@common/constants/queues.constant';
 import { Analysis, AnalysisStatus } from '../entities/analysis.entity';
 import { AnalysisIssue } from '../entities/analysis-issue.entity';
@@ -45,6 +46,7 @@ export class DocumentAnalysisProcessor extends WorkerHost {
     private readonly fileStorage: FileStorageService,
     private readonly textExtractor: TextExtractorService,
     private readonly dataSource: DataSource,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super();
   }
@@ -108,6 +110,12 @@ export class DocumentAnalysisProcessor extends WorkerHost {
       this.logger.log(
         `Analysis ${analysisId} completed — score: ${result.complianceScore}, issues: ${result.issues.length}`,
       );
+      this.eventEmitter.emit('analysis.done', {
+        documentId,
+        type: 'analysis',
+        status: 'completed',
+        recordId: analysisId,
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -124,6 +132,14 @@ export class DocumentAnalysisProcessor extends WorkerHost {
         }),
         this.documentRepo.update(documentId, { status: DocumentStatus.ERROR }),
       ]);
+
+      this.eventEmitter.emit('analysis.done', {
+        documentId,
+        type: 'analysis',
+        status: 'failed',
+        recordId: analysisId,
+        errorMessage,
+      });
 
       throw error;
     }

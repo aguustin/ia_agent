@@ -3,7 +3,11 @@
     "allow": [
       "Bash(git rm *)",
       "Bash(git add *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(tasklist /FI \"IMAGENAME eq node.exe\")",
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
+      "PowerShell([System.Environment]::GetEnvironmentVariable\\(\"OPENAI_API_KEY\", \"User\"\\); [System.Environment]::GetEnvironmentVariable\\(\"OPENAI_API_KEY\", \"Machine\"\\))",
+      "Bash(node -e \"require\\('ioredis'\\); console.log\\('ioredis ok'\\)\")"
     ]
   }
 }

@@ -72,9 +72,8 @@ export class OpenAIProvider implements IAIProvider, OnModuleInit {
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit(): void {
-    this.client = new OpenAI({
-      apiKey: this.config.getOrThrow<string>('OPENAI_API_KEY'),
-    });
+    const apiKey = this.config.getOrThrow<string>('OPENAI_API_KEY');
+    this.client = new OpenAI({ apiKey });
     this.model = this.config.get<string>('OPENAI_MODEL', 'gpt-4o');
     this.logger.log(`OpenAI provider initialized with model: ${this.model}`);
   }

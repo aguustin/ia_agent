@@ -1,6 +1,7 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Repository } from 'typeorm';
 import { Job, UnrecoverableError } from 'bullmq';
 import { QUEUES, JOBS } from '@common/constants/queues.constant';
@@ -9,6 +10,7 @@ import { DocumentPreValidationService } from '../services/document-pre-validatio
 import {
   PreValidationFileError,
   PreValidationInvalidResponseError,
+  PreValidationTextExtractionError,
 } from '../errors/pre-validation.errors';
 import {
   PreValidationRecord,
@@ -32,6 +34,7 @@ export class PreValidationProcessor extends WorkerHost {
     @InjectRepository(PreValidationRecord)
     private readonly recordRepo: Repository<PreValidationRecord>,
     private readonly preValidationService: DocumentPreValidationService,
+    private readonly eventEmitter: EventEmitter2,
   ) {
     super();
   }
@@ -68,6 +71,12 @@ export class PreValidationProcessor extends WorkerHost {
           `errores: ${result.errores.length}, ` +
           `advertencias: ${result.advertencias.length}`,
       );
+      this.eventEmitter.emit('analysis.done', {
+        documentId,
+        type: 'pre-validation',
+        status: 'completed',
+        recordId,
+      });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
@@ -82,18 +91,24 @@ export class PreValidationProcessor extends WorkerHost {
         completedAt: new Date(),
       });
 
-      // Non-retryable: document gone, file deleted, AI returned garbage.
-      // These won't succeed on retry — fail permanently so BullMQ stops.
+      this.eventEmitter.emit('analysis.done', {
+        documentId,
+        type: 'pre-validation',
+        status: 'failed',
+        recordId,
+        errorMessage,
+      });
+
+      // Non-retryable: retrying won't help — fail permanently so BullMQ stops.
       if (
         error instanceof ResourceNotFoundException ||
         error instanceof PreValidationFileError ||
+        error instanceof PreValidationTextExtractionError ||
         error instanceof PreValidationInvalidResponseError
       ) {
         throw new UnrecoverableError(errorMessage);
       }
 
-      // Everything else (network blip, AI timeout) is retryable — rethrow
-      // and let BullMQ apply the exponential backoff configured on the job.
       throw error;
     }
   }

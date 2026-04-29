@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BullModule } from '@nestjs/bullmq';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Analysis } from './entities/analysis.entity';
 import { AnalysisIssue } from './entities/analysis-issue.entity';
 import { PreValidationRecord } from './entities/pre-validation-record.entity';
@@ -22,6 +23,7 @@ import { QUEUES } from '@common/constants/queues.constant';
       { name: QUEUES.ANALYSIS },
       { name: QUEUES.PRE_VALIDATION },
     ),
+    EventEmitterModule,
     DocumentsModule,
     ProjectsModule,
   ],
