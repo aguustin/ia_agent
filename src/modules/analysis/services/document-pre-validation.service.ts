@@ -145,22 +145,43 @@ export class DocumentPreValidationService {
    * Pure function — no side effects, easy to test and iterate on independently.
    */
   buildPrompt(contenido: string): string {
-    return `\
-Actúa como un revisor técnico de expedientes de obras en Argentina.
+    return `
+Sos un ingeniero civil especializado en aprobación de expedientes municipales en Argentina, con conocimiento de normativas como CTE, CIRSOC, IRAM, reglamentos de higiene y seguridad, y códigos de edificación municipales.
 
-Analiza el siguiente documento y devuelve un JSON con:
+TAREA: Revisá el siguiente documento técnico e identificá problemas REALES que contenga.
 
-- faltantes
-- errores
-- advertencias
+INSTRUCCIONES DE ANÁLISIS:
+- Leé todo el contenido del documento antes de responder
+- Identificá problemas concretos presentes en el texto: datos faltantes, contradicciones, incumplimientos normativos
+- Citá secciones, valores o datos específicos del documento cuando sea posible (ej: "La memoria descriptiva indica 120 m² pero el plano de planta suma 145 m²")
+- Si el documento tiene poco texto o parece ilegible/escaneado, indicalo en advertencias
+- No inventes información que no esté en el documento
+- Si no hay problemas en una categoría, dejá el array vacío
 
-Reglas:
-- No inventes información
-- Si no estás seguro, colócalo como advertencia
-- Sé específico (ej: "Falta plano eléctrico", no "falta información")
+CATEGORÍAS:
+- faltantes: elementos obligatorios ausentes o que no se mencionan (planos, cálculos, firmas, visados, memorias, planillas)
+- errores: datos incorrectos, contradicciones entre secciones, incumplimientos normativos concretos
+- advertencias: aspectos que requieren revisión o aclaración aunque no sean errores graves
 
-Documento:
-${contenido}`;
+FORMATO DE RESPUESTA (solo JSON, sin texto adicional):
+{
+  "faltantes": ["descripción específica del elemento faltante"],
+  "errores": ["descripción específica del error con referencia al contenido del documento"],
+  "advertencias": ["descripción específica de la advertencia"]
+}
+
+RESTRICCIONES:
+- Máximo 10 items por categoría
+- Cada item debe ser una oración completa y accionable en español
+- Sin texto fuera del JSON
+- Sin markdown ni bloques de código
+- No inventes información que no esté en el documento
+
+DOCUMENTO A ANALIZAR:
+<<<
+${contenido}
+>>>
+`;
   }
 
   /**

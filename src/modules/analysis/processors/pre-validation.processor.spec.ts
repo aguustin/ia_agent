@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Job, UnrecoverableError } from 'bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { PreValidationProcessor, PreValidationJobData } from './pre-validation.processor';
 import { PreValidationRecord, PreValidationStatus } from '../entities/pre-validation-record.entity';
 import { DocumentPreValidationService } from '../services/document-pre-validation.service';
@@ -68,6 +69,7 @@ describe('PreValidationProcessor', () => {
         PreValidationProcessor,
         { provide: getRepositoryToken(PreValidationRecord), useValue: recordRepo },
         { provide: DocumentPreValidationService, useValue: preValidationService },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 

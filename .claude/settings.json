@@ -1,13 +1,20 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git rm *)",
+      "Bash(npm run *)",
+      "Bash(npm install *)",
+      "Bash(npm uninstall *)",
+      "Bash(npx tsc *)",
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
       "Bash(git add *)",
       "Bash(git commit *)",
-      "Bash(tasklist /FI \"IMAGENAME eq node.exe\")",
-      "PowerShell(Get-Process node -ErrorAction SilentlyContinue)",
-      "PowerShell([System.Environment]::GetEnvironmentVariable\\(\"OPENAI_API_KEY\", \"User\"\\); [System.Environment]::GetEnvironmentVariable\\(\"OPENAI_API_KEY\", \"Machine\"\\))",
-      "Bash(node -e \"require\\('ioredis'\\); console.log\\('ioredis ok'\\)\")"
+      "Bash(git rm *)",
+      "Bash(npm list *)",
+      "Bash(node -e ' *)",
+      "Bash(npm show *)",
+      "Bash(curl http://localhost:11434)"
     ]
   }
 }

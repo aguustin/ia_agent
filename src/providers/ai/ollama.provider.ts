@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import OpenAI from 'openai';
+import { Ollama, Message } from 'ollama';
 import {
   IAIProvider,
   DocumentAnalysisRequest,
@@ -63,26 +63,32 @@ Respond ONLY with a valid JSON object in this exact schema:
   "recommendations": ["string"]
 }`;
 
+function extractJson(text: string): string {
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenced) return fenced[1].trim();
+  const braceStart = text.indexOf('{');
+  const braceEnd = text.lastIndexOf('}');
+  if (braceStart !== -1 && braceEnd !== -1) return text.slice(braceStart, braceEnd + 1);
+  return text.trim();
+}
+
 @Injectable()
-export class OpenAIProvider implements IAIProvider, OnModuleInit {
-  private readonly logger = new Logger(OpenAIProvider.name);
-  private client: OpenAI;
-  private model: string;
+export class OllamaProvider implements IAIProvider, OnModuleInit {
+  private readonly logger = new Logger(OllamaProvider.name);
+  private client!: Ollama;
+  private modelName!: string;
 
   constructor(private readonly config: ConfigService) {}
 
   onModuleInit(): void {
-    const apiKey = this.config.getOrThrow<string>('OPENAI_API_KEY');
-    this.client = new OpenAI({ apiKey });
-    this.model = this.config.get<string>('OPENAI_MODEL', 'gpt-4o');
-    this.logger.log(`OpenAI provider initialized with model: ${this.model}`);
+    const host = this.config.get<string>('OLLAMA_HOST', 'http://localhost:11434');
+    this.client = new Ollama({ host });
+    this.modelName = this.config.get<string>('OLLAMA_MODEL', 'llama3.2');
+    this.logger.log(`Ollama provider initialized — host: ${host}, model: ${this.modelName}`);
   }
 
   async analyzeDocument(request: DocumentAnalysisRequest): Promise<DocumentAnalysisResult> {
-    const maxTokens = this.config.get<number>('OPENAI_MAX_TOKENS', 4096);
-
-    const userPrompt = `
-Project: ${request.projectName}
+    const userPrompt = `Project: ${request.projectName}
 ${request.projectDescription ? `Description: ${request.projectDescription}` : ''}
 Document: ${request.documentName} (${request.documentType})
 
@@ -90,25 +96,24 @@ Document: ${request.documentName} (${request.documentType})
 ${request.documentContent.slice(0, 60000)}
 --- END OF DOCUMENT ---
 
-Analyze this construction document for pre-validation purposes.`;
+Analyze this construction document for compliance purposes.`;
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: maxTokens,
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
+    const response = await this.client.chat({
+      model: this.modelName,
+      format: 'json',
+      options: { temperature: 0.1, num_ctx: 8192 },
       messages: [
         { role: 'system', content: ANALYSIS_SYSTEM_PROMPT },
         { role: 'user', content: userPrompt },
       ],
     });
 
-    const rawContent = response.choices[0]?.message?.content;
-    if (!rawContent) {
-      throw new Error('OpenAI returned empty response for document analysis');
+    const rawText = response.message.content;
+    if (!rawText?.trim()) {
+      throw new Error('Ollama returned empty response for document analysis');
     }
 
-    const parsed = JSON.parse(rawContent) as {
+    const parsed = JSON.parse(extractJson(rawText)) as {
       summary: string;
       complianceScore: number;
       issues: Array<{
@@ -139,14 +144,12 @@ Analyze this construction document for pre-validation purposes.`;
       metadata: {
         pagesAnalyzed: 0,
         analysisVersion: '1.0',
-        model: response.model,
+        model: this.modelName,
       },
     };
   }
 
   async preValidateDocument(request: PreValidationRequest): Promise<PreValidationResult> {
-    const maxTokens = this.config.get<number>('OPENAI_MAX_TOKENS', 4096);
-
     const lines: string[] = [
       `Documento: ${request.documentName}`,
       `Tipo: ${request.documentType}`,
@@ -161,59 +164,59 @@ Analyze this construction document for pre-validation purposes.`;
     lines.push('', '--- CONTENIDO DEL DOCUMENTO ---', request.documentContent, '--- FIN ---', '');
     lines.push('Realiza la pre-validación de este documento.');
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: maxTokens,
-      temperature: 0.1,
-      response_format: { type: 'json_object' },
+    const response = await this.client.chat({
+      model: this.modelName,
+      format: 'json',
+      options: { temperature: 0.1, num_ctx: 8192 },
       messages: [
         { role: 'system', content: PRE_VALIDATION_SYSTEM_PROMPT },
         { role: 'user', content: lines.join('\n') },
       ],
     });
 
-    const rawContent = response.choices[0]?.message?.content;
-    if (!rawContent) {
-      throw new Error('OpenAI returned an empty response for pre-validation');
+    const rawText = response.message.content;
+    if (!rawText?.trim()) {
+      throw new Error('Ollama returned empty response for pre-validation');
     }
 
-    // JSON.parse throws SyntaxError on invalid JSON — callers wrap in PreValidationAIError.
-    return JSON.parse(rawContent) as PreValidationResult;
+    return JSON.parse(extractJson(rawText)) as PreValidationResult;
   }
 
   async chat(request: ChatRequest): Promise<string> {
-    const maxTokens = request.maxTokens ?? this.config.get<number>('OPENAI_MAX_TOKENS', 2048);
+    const messages: Message[] = [
+      { role: 'system', content: request.systemContext },
+      ...request.messages.map((msg) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      })),
+    ];
 
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: maxTokens,
-      temperature: 0.7,
-      messages: [
-        { role: 'system', content: request.systemContext },
-        ...request.messages,
-      ],
+    const response = await this.client.chat({
+      model: this.modelName,
+      messages,
     });
 
-    return response.choices[0]?.message?.content ?? '';
+    return response.message.content;
   }
 
   async *chatStream(request: ChatRequest): AsyncIterable<string> {
-    const maxTokens = request.maxTokens ?? this.config.get<number>('OPENAI_MAX_TOKENS', 2048);
+    const messages: Message[] = [
+      { role: 'system', content: request.systemContext },
+      ...request.messages.map((msg) => ({
+        role: msg.role as 'user' | 'assistant',
+        content: msg.content,
+      })),
+    ];
 
-    const stream = await this.client.chat.completions.create({
-      model: this.model,
-      max_tokens: maxTokens,
-      temperature: 0.7,
+    const stream = await this.client.chat({
+      model: this.modelName,
+      messages,
       stream: true,
-      messages: [
-        { role: 'system', content: request.systemContext },
-        ...request.messages,
-      ],
     });
 
     for await (const chunk of stream) {
-      const content = chunk.choices[0]?.delta?.content;
-      if (content) yield content;
+      const text = chunk.message.content;
+      if (text) yield text;
     }
   }
 }

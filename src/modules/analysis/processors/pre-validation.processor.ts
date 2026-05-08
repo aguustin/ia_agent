@@ -79,9 +79,13 @@ export class PreValidationProcessor extends WorkerHost {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+      const cause = (error as { cause?: unknown })?.cause;
+      const causeMessage =
+        cause instanceof Error ? cause.message : cause != null ? String(cause) : undefined;
 
       this.logger.error(
-        `Pre-validation job ${job.id} failed: ${errorMessage}`,
+        `Pre-validation job ${job.id} failed: ${errorMessage}` +
+          (causeMessage ? ` — cause: ${causeMessage}` : ''),
         error instanceof Error ? error.stack : undefined,
       );
 

@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
 import { Job } from 'bullmq';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DocumentAnalysisProcessor, AnalysisJobData } from './document-analysis.processor';
 import { Analysis, AnalysisStatus } from '../entities/analysis.entity';
 import { AnalysisIssue } from '../entities/analysis-issue.entity';
@@ -138,6 +139,7 @@ describe('DocumentAnalysisProcessor', () => {
         { provide: FILE_STORAGE_SERVICE, useValue: fileStorage },
         { provide: TextExtractorService, useValue: textExtractor },
         { provide: DataSource, useValue: dataSource },
+        { provide: EventEmitter2, useValue: { emit: jest.fn() } },
       ],
     }).compile();
 
